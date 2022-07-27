@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise'
 import postgres from 'pg'
-import countries from 'Countries.json' assert { type: 'json' }
+import countries from './Countries.json' assert { type: 'json' }
 
 // MySQL database
 const c = await mysql.createConnection({
