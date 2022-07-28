@@ -78,6 +78,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS players(
     visits INT4 NOT NULL,
     is_united BOOLEAN NOT NULL,
     last_online TIMESTAMP,
+    rank INT4,
+    average REAL,
     PRIMARY KEY(id),
     CONSTRAINT fk_player_id
       FOREIGN KEY(id) 
@@ -215,7 +217,7 @@ for (let j = 0; j < 1000; j++) {
         }
         arr.push(mapIds.find(a => a.uid === e.Uid).id, // Map ID
             playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
-            e.Score.map(a => Math.abs(a) === 6 ? a / 2 : a), // Player vote
+            Math.abs(e.Score) === 6 ? e.Score / 2 : e.Score, // Player vote (THE HOTFIX ONLY APPLIES FOR AUTISTIC)
             new Date()) // Vote date, no such thing in XASECO, so new date is inserted instead
     }
     // Remove the already inserted entries
