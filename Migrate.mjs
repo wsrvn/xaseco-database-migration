@@ -283,8 +283,8 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
-        const mapId = mapIds.find(a => a.uid === e.Uid).id
-        const playerId = playerIds.find(a => a.login === e.Login.split('/')[0]).id
+        const mapId = mapIds.find(a => a.uid === e.ChallengeID)?.id
+        const playerId = playerIds.find(a => a.login === e.PlayerNick?.split('/')[0])?.id
         if (mapId === undefined || playerId === undefined) { continue }
         arr.push(
             mapId, // Map ID
@@ -332,8 +332,8 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
-        const mapId = mapIds.find(a => a.uid === e.uid).id
-        const playerId = playerIds.find(a => a.login === e.login.split('/')[0]).id
+        const mapId = mapIds.find(a => a.uid === e.uid)?.id
+        const playerId = playerIds.find(a => a.login === e.login?.split('/')[0])?.id
         if (mapId === undefined || playerId === undefined) { continue }
         arr.push(
             mapId, // Map ID
