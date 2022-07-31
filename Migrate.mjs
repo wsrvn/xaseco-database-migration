@@ -1,22 +1,23 @@
 import mysql from 'mysql2/promise'
 import postgres from 'pg'
 import countries from './Countries.json' assert { type: 'json' }
+import 'dotenv/config'
 
 // MySQL database
 const c = await mysql.createConnection({
-    host: '', // MySQL database host
-    user: '', // MySQL database user
-    password: '', // MySQL database user password
-    database: '' // MySQL database name
+    host: process.env.MYSQL_HOST, // MySQL database host
+    user: process.env.MYSQL_USER, // MySQL database user
+    password: process.env.MYSQL_PASSWORD, // MySQL database user password
+    database: process.env.MYSQL_DATABASE // MySQL database name
 });
 
 // PostgreSQL database
 const pool = new postgres.Pool({
-    user: '', // PostgreSQL database user
-    password: '', // PostgreSQL database user password
-    database: '', // PostgreSQL database name
-    host: '', // PostgreSQL database host
-    port: Number('') // PostgreSQL database port
+    user: process.env.POSTGRES_USER, // PostgreSQL database user
+    password: process.env.POSTGRES_PASSWORD, // PostgreSQL database user password
+    database: process.env.POSTGRES_DATABASE, // PostgreSQL database name
+    host: process.env.POSTGRES_HOST, // PostgreSQL database host
+    port: process.env.POSTGRES_PORT // PostgreSQL database port
 })
 
 /**
@@ -78,7 +79,6 @@ await pool.query(`CREATE TABLE IF NOT EXISTS players(
     visits INT4 NOT NULL,
     is_united BOOLEAN NOT NULL,
     last_online TIMESTAMP,
-    rank INT4,
     average REAL,
     PRIMARY KEY(id),
     CONSTRAINT fk_player_id
@@ -164,14 +164,16 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
-        arr.push(playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
+        arr.push(
+            playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
             e['CONVERT(CAST(CONVERT(NickName USING LATIN1) AS BINARY) USING UTF8)'], // Player nickname, very funny
             countries.find(a => a.code === e.Nation).name, // Country name, we store full location normally, but it's impossible to get from XASECO
             e.Wins, // Player wins amount
             e.TimePlayed, // Player total playtime
             playersE.find(a => e.Id === a.playerID).visits, // Player total visits
             false, // Whether the player has TMUF. Defaults to false, as this isn't stored by XASECO
-            new Date(e.UpdatedAt)) // Player last update
+            new Date(e.UpdatedAt) // Player last update
+            )
     }
     // Remove the already inserted entries
     players = players.slice(1000)
@@ -191,11 +193,13 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
-        arr.push(mapIds.find(a => a.uid === e.Uid).id, // Map ID
+        arr.push(
+            mapIds.find(a => a.uid === e.Uid).id, // Map ID
             playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
             e.Score, // Record time
             e.Checkpoints.split(',').map(a => Number(a)), // Player checkpoints, need to be reformatted as we store them in arrays
-            new Date(e.Date)) // Record date
+            new Date(e.Date) // Record date
+            )
     }
     // Remove the already inserted entries
     records = records.slice(1000)
@@ -215,10 +219,12 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
-        arr.push(mapIds.find(a => a.uid === e.Uid).id, // Map ID
+        arr.push(
+            mapIds.find(a => a.uid === e.Uid).id, // Map ID
             playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
-            Math.abs(e.Score) === 6 ? e.Score / 2 : e.Score, // Player vote (THE HOTFIX ONLY APPLIES FOR AUTISTIC)
-            new Date()) // Vote date, no such thing in XASECO, so new date is inserted instead
+            Math.abs(e.Score) === 6 ? e.Score / 2 : e.Score, // Player vote
+            new Date() // Vote date, no such thing in XASECO, so new date is inserted instead
+            )
     }
     // Remove the already inserted entries
     votes = votes.slice(1000)
