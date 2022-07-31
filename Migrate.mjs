@@ -124,6 +124,36 @@ await pool.query(`CREATE TABLE IF NOT EXISTS votes(
         REFERENCES map_ids(id)
 );`)
 
+// Create Records table
+await pool.query(`CREATE TABLE IF NOT EXISTS best_sector_records(
+    map_id INT4 NOT NULL,
+    player_id INT4 NOT NULL,
+    index INT2 NOT NULL,
+    sector INT4 NOT NULL,
+    date TIMESTAMP NOT NULL,
+    PRIMARY KEY(map_id, index),
+    CONSTRAINT fk_player_id
+      FOREIGN KEY(player_id) 
+        REFERENCES player_ids(id),
+    CONSTRAINT fk_map_id
+      FOREIGN KEY(map_id)
+        REFERENCES map_ids(id)
+  );`)
+
+// Create Votes table
+await pool.query(`CREATE TABLE IF NOT EXISTS sector_records(
+    map_id INT4 NOT NULL,
+    player_id INT4 NOT NULL,
+    sectors INT4[] NOT NULL,
+    PRIMARY KEY(map_id, player_id),
+    CONSTRAINT fk_player_id
+      FOREIGN KEY(player_id) 
+        REFERENCES player_ids(id),
+    CONSTRAINT fk_map_id
+      FOREIGN KEY(map_id)
+        REFERENCES map_ids(id)
+  );`)
+
 // Get all maps
 const maps = (await c.query('SELECT * FROM challenges'))[0]
 
@@ -143,6 +173,10 @@ INNER JOIN players ON players.Id=records.PlayerId `))[0]
 let votes = (await c.query(`SELECT Uid, Login, Score FROM rs_karma
 INNER JOIN challenges ON challenges.Id=rs_karma.ChallengeId
 INNER JOIN players ON players.Id=rs_karma.PlayerId `))[0]
+
+let bestSecs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM secrecs_all`))[0]
+
+let secs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM secrecs_own`))[0]
 
 // Insert all map IDs into the database
 await pool.query(`INSERT INTO map_ids(uid) ${getInsertValuesString(1, maps.length)} 
@@ -173,7 +207,7 @@ for (let j = 0; j < 1000; j++) {
             playersE.find(a => e.Id === a.playerID).visits, // Player total visits
             false, // Whether the player has TMUF. Defaults to false, as this isn't stored by XASECO
             new Date(e.UpdatedAt) // Player last update
-            )
+        )
     }
     // Remove the already inserted entries
     players = players.slice(1000)
@@ -199,7 +233,7 @@ for (let j = 0; j < 1000; j++) {
             e.Score, // Record time
             e.Checkpoints.split(',').map(a => Number(a)), // Player checkpoints, need to be reformatted as we store them in arrays
             new Date(e.Date) // Record date
-            )
+        )
     }
     // Remove the already inserted entries
     records = records.slice(1000)
@@ -224,7 +258,7 @@ for (let j = 0; j < 1000; j++) {
             playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
             Math.abs(e.Score) === 6 ? e.Score / 2 : e.Score, // Player vote
             new Date() // Vote date, no such thing in XASECO, so new date is inserted instead
-            )
+        )
     }
     // Remove the already inserted entries
     votes = votes.slice(1000)
@@ -235,6 +269,72 @@ for (let j = 0; j < 1000; j++) {
     await pool.query(`INSERT INTO votes(map_id, player_id, vote, date) ${getInsertValuesString(4, arr.length / 4)}
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
 }
+
+for (let j = 0; j < 1000; j++) {
+    const arr = []
+    for (const [i, e] of bestSecs.entries()) {
+        if (i === 1000) {
+            break
+        }
+        arr.push(
+            mapIds.find(a => a.uid === e.Uid).id, // Map ID
+            playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
+            e.Sector, // Player vote
+            e.Time,
+            new Date() // Vote date, no such thing in XASECO, so new date is inserted instead
+        )
+    }
+    // Remove the already inserted entries
+    bestSecs = bestSecs.slice(1000)
+    // Nothing left to insert..
+    if (arr.length === 0) {
+        break
+    }
+    await pool.query(`INSERT INTO best_sector_records(map_id, player_id, index, sector, date) ${getInsertValuesString(5, arr.length / 5)}
+    ON CONFLICT (map_id, index) DO NOTHING`, arr)
+}
+
+let s = []
+
+for (const e of secs) {
+    if (!s.some(a => a.uid === secs.ChallengeID)) {
+        const arr = secs.filter(a => a.ChallengeID === e.ChallengeID &&
+            e.PlayerNick === a.PlayerNick)
+        const sectors = []
+        for (const e of arr) {
+            sectors[e.Sector] = e.Time
+        }
+        s.push({
+            uid: e.ChallengeID,
+            login: e.PlayerNick,
+            sectors: sectors.map(a => a === undefined ? -1 : a)
+        })
+    }
+}
+
+for (let j = 0; j < 1000; j++) {
+    const arr = []
+    for (const [i, e] of s.entries()) {
+        if (i === 1000) {
+            break
+        }
+        arr.push(
+            mapIds.find(a => a.uid === e.uid).id, // Map ID
+            playerIds.find(a => a.login === e.login.split('/')[0]).id, // Player ID
+            e.sectors
+        )
+    }
+    // Remove the already inserted entries
+    s = s.slice(1000)
+    // Nothing left to insert..
+    if (arr.length === 0) {
+        break
+    }
+    await pool.query(`INSERT INTO sector_records(map_id, player_id, sectors) ${getInsertValuesString(3, arr.length / 3)}
+    ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
+}
+
+
 
 // Exit the process on completion
 console.log('Migration done. Check the database for errors.')
