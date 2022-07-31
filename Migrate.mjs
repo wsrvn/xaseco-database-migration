@@ -124,7 +124,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS votes(
         REFERENCES map_ids(id)
 );`)
 
-// Create Records table
+// Create Best Sectors table
 await pool.query(`CREATE TABLE IF NOT EXISTS best_sector_records(
     map_id INT4 NOT NULL,
     player_id INT4 NOT NULL,
@@ -140,7 +140,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS best_sector_records(
         REFERENCES map_ids(id)
   );`)
 
-// Create Votes table
+// Create All Sectors table
 await pool.query(`CREATE TABLE IF NOT EXISTS sector_records(
     map_id INT4 NOT NULL,
     player_id INT4 NOT NULL,
@@ -174,8 +174,10 @@ let votes = (await c.query(`SELECT Uid, Login, Score FROM rs_karma
 INNER JOIN challenges ON challenges.Id=rs_karma.ChallengeId
 INNER JOIN players ON players.Id=rs_karma.PlayerId `))[0]
 
+// Get all best sectors
 let bestSecs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM secrecs_all`))[0]
 
+// Get all player sectors
 let secs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM secrecs_own`))[0]
 
 // Insert all map IDs into the database
@@ -190,6 +192,7 @@ ON CONFLICT (login) DO NOTHING`, players.map(a => a.Login.split('/')[0]))
 const playerIds = await getPlayerIds()
 const mapIds = await getMapIds()
 
+console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'players' to ${process.env.POSTGRES_DATABASE}:'players'`)
 // Queries need to be separated to not hit the PostgreSQL limit
 // Players table stuff
 for (let j = 0; j < 1000; j++) {
@@ -220,6 +223,7 @@ for (let j = 0; j < 1000; j++) {
     ON CONFLICT (id) DO NOTHING`, arr)
 }
 
+console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'records' to ${process.env.POSTGRES_DATABASE}:'records'`)
 // Records table stuff
 for (let j = 0; j < 1000; j++) {
     const arr = []
@@ -246,6 +250,7 @@ for (let j = 0; j < 1000; j++) {
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
 }
 
+console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'rs_karma' to ${process.env.POSTGRES_DATABASE}:'votes'`)
 // Votes table stuff
 for (let j = 0; j < 1000; j++) {
     const arr = []
@@ -270,6 +275,8 @@ for (let j = 0; j < 1000; j++) {
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
 }
 
+console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'secrecs_all' to ${process.env.POSTGRES_DATABASE}:'best_sector_records'`)
+// Best Sectors table stuff
 for (let j = 0; j < 1000; j++) {
     const arr = []
     for (const [i, e] of bestSecs.entries()) {
@@ -279,9 +286,9 @@ for (let j = 0; j < 1000; j++) {
         arr.push(
             mapIds.find(a => a.uid === e.Uid).id, // Map ID
             playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
-            e.Sector, // Player vote
-            e.Time,
-            new Date() // Vote date, no such thing in XASECO, so new date is inserted instead
+            e.Sector, // Sector index
+            e.Time, // Sector time
+            new Date() // Sector date, no such thing in XASECO, so new date is inserted instead
         )
     }
     // Remove the already inserted entries
@@ -294,8 +301,10 @@ for (let j = 0; j < 1000; j++) {
     ON CONFLICT (map_id, index) DO NOTHING`, arr)
 }
 
+// Initialise the array
 let s = []
 
+// Get each player's sectors for each map and store them as an array
 for (const e of secs) {
     if (!s.some(a => a.uid === secs.ChallengeID)) {
         const arr = secs.filter(a => a.ChallengeID === e.ChallengeID &&
@@ -312,6 +321,8 @@ for (const e of secs) {
     }
 }
 
+console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'secrecs_own' to ${process.env.POSTGRES_DATABASE}:'sector_records'`)
+// Player Sectors table stuff
 for (let j = 0; j < 1000; j++) {
     const arr = []
     for (const [i, e] of s.entries()) {
@@ -321,7 +332,7 @@ for (let j = 0; j < 1000; j++) {
         arr.push(
             mapIds.find(a => a.uid === e.uid).id, // Map ID
             playerIds.find(a => a.login === e.login.split('/')[0]).id, // Player ID
-            e.sectors
+            e.sectors // All sectors array
         )
     }
     // Remove the already inserted entries
@@ -333,8 +344,6 @@ for (let j = 0; j < 1000; j++) {
     await pool.query(`INSERT INTO sector_records(map_id, player_id, sectors) ${getInsertValuesString(3, arr.length / 3)}
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
 }
-
-
 
 // Exit the process on completion
 console.log('Migration done. Check the database for errors.')
