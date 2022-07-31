@@ -283,9 +283,12 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
+        const mapId = mapIds.find(a => a.uid === e.Uid).id
+        const playerId = playerIds.find(a => a.login === e.Login.split('/')[0]).id
+        if (mapId === undefined || playerId === undefined) { continue }
         arr.push(
-            mapIds.find(a => a.uid === e.Uid).id, // Map ID
-            playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
+            mapId, // Map ID
+            playerId, // Player ID
             e.Sector, // Sector index
             e.Time, // Sector time
             new Date() // Sector date, no such thing in XASECO, so new date is inserted instead
@@ -329,9 +332,12 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
+        const mapId = mapIds.find(a => a.uid === e.uid).id
+        const playerId = playerIds.find(a => a.login === e.login.split('/')[0]).id
+        if (mapId === undefined || playerId === undefined) { continue }
         arr.push(
-            mapIds.find(a => a.uid === e.uid).id, // Map ID
-            playerIds.find(a => a.login === e.login.split('/')[0]).id, // Player ID
+            mapId, // Map ID
+            playerId, // Player ID
             e.sectors // All sectors array
         )
     }
