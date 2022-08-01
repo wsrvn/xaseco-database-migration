@@ -231,11 +231,13 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
+        const cps = e.Checkpoints.split(',').map(a => Number(a))
+        cps.pop() // XASECO stores finish as checkpoint and trakman doesnt
         arr.push(
             mapIds.find(a => a.uid === e.Uid).id, // Map ID
             playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
             e.Score, // Record time
-            e.Checkpoints.split(',').map(a => Number(a)), // Player checkpoints, need to be reformatted as we store them in arrays
+            cps, // Player checkpoints, need to be reformatted as we store them in arrays
             new Date(e.Date) // Record date
         )
     }
