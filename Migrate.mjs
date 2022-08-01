@@ -283,8 +283,8 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
-        const mapId = mapIds.find(a => a.uid === e.Uid).id
-        const playerId = playerIds.find(a => a.login === e.Login.split('/')[0]).id
+        const mapId = mapIds.find(a => a.uid === e.ChallengeID)?.id
+        const playerId = playerIds.find(a => a.login === e.PlayerNick?.split('/')[0])?.id
         if (mapId === undefined || playerId === undefined) { continue }
         arr.push(
             mapId, // Map ID
@@ -304,27 +304,32 @@ for (let j = 0; j < 1000; j++) {
     ON CONFLICT (map_id, index) DO NOTHING`, arr)
 }
 
+console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'secrecs_own' to ${process.env.POSTGRES_DATABASE}:'sector_records'`)
 // Initialise the array
 let s = []
-
 // Get each player's sectors for each map and store them as an array
-for (const e of secs) {
-    if (!s.some(a => a.uid === secs.ChallengeID)) {
-        const arr = secs.filter(a => a.ChallengeID === e.ChallengeID &&
-            e.PlayerNick === a.PlayerNick)
-        const sectors = []
-        for (const e of arr) {
-            sectors[e.Sector] = e.Time
-        }
-        s.push({
-            uid: e.ChallengeID,
-            login: e.PlayerNick,
-            sectors: sectors.map(a => a === undefined ? -1 : a)
-        })
+let index = 0
+while (secs.length > 0) {
+    s[index] = {
+        uid: secs[0].ChallengeID,
+        login: secs[0].PlayerNick,
+        sectors: []
     }
+    s[index].sectors[secs[0].Sector] = secs[0].Time
+    let i = 1
+    while (true) {
+        if (secs[i] === undefined) { break }
+        if (secs[i].ChallengeID === secs[0].ChallengeID && secs[i].PlayerNick === secs[0].PlayerNick) {
+            s[index].sectors[secs[i].Sector] = secs[i].Time
+            secs.splice(i, 1)
+            i--
+        }
+        i++
+    }
+    secs.splice(0, 1)
+    index++
 }
 
-console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'secrecs_own' to ${process.env.POSTGRES_DATABASE}:'sector_records'`)
 // Player Sectors table stuff
 for (let j = 0; j < 1000; j++) {
     const arr = []
@@ -332,8 +337,8 @@ for (let j = 0; j < 1000; j++) {
         if (i === 1000) {
             break
         }
-        const mapId = mapIds.find(a => a.uid === e.uid).id
-        const playerId = playerIds.find(a => a.login === e.login.split('/')[0]).id
+        const mapId = mapIds.find(a => a.uid === e.uid)?.id
+        const playerId = playerIds.find(a => a.login === e.login?.split('/')[0])?.id
         if (mapId === undefined || playerId === undefined) { continue }
         arr.push(
             mapId, // Map ID
