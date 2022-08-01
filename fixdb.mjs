@@ -29,7 +29,7 @@ function getInsertValuesString(columns, rows = 1) {
     return ret.slice(0, -1)
 }
 
-let records = (await pool.query(`SELECT * FROM records;`)).rows
+let records = (await pool.query(`SELECT map_id, player_id, time, checkpoints, date FROM records;`)).rows
 for (let i = 0; i < records.length; i++) {
     if (records[i].date[records[i].checkpoints.length - 1] === records[i].time) {
         records[i].checkpoints.pop()
@@ -62,5 +62,5 @@ while (true) {
         break
     }
     // Insert records
-    await pool.query(`INSERT INTO records(map_id, player_id, time, checkpoints, date) ${getInsertValuesString(5, arr.length / 5)}`, arr)
+    await pool.query(`INSERT INTO records(map_id, player_id, time, checkpoints, date) ${getInsertValuesString(5, arr.length / 5)}`, ...arr.values())
 }
