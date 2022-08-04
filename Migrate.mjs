@@ -154,11 +154,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sector_records(
         REFERENCES map_ids(id)
   );`)
 
+// Create Donations table
 await pool.query(`CREATE TABLE IF NOT EXISTS donations(
-    player_id INT4 GENERATED ALWAYS AS IDENTITY,
+    player_id INT4 NOT NULL,
     amount INT4 NOT NULL,
-    date TIMESTAMP NOT NULL
-    PRIMARY KEY(player_id, date)
+    date TIMESTAMP NOT NULL,
+    PRIMARY KEY(player_id, date),
+    CONSTRAINT fk_player_id
+      FOREIGN KEY(player_id)
+        REFERENCES player_ids(id)
   );`)
 
 // Get all maps
@@ -166,11 +170,13 @@ const maps = (await c.query('SELECT * FROM challenges'))[0]
 
 // Get all players, convert the nicknames in the process so they're displayed correctly.
 // Conversion query taken from https://stackoverflow.com/a/9407998
+// This can be made unfunny with AS NICKNAME but i want to be funny
 const players = (await c.query('SELECT Id, Login, CONVERT(CAST(CONVERT(NickName USING LATIN1) AS BINARY) USING UTF8), Nation, Wins, TimePlayed, UpdatedAt FROM players'))[0]
 
+// Break the reference
 let p = [...players]
 
-// Get players extra values, only visits are used from here for now
+// Get players extra values, most are unused due to differences in the system
 const playersE = (await c.query('SELECT * FROM players_extra'))[0]
 
 // Get all records that correlate to the players & maps from the database
@@ -319,6 +325,7 @@ console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'secrecs_own' to ${pr
 // Initialise the array
 let s = []
 // Get each player's sectors for each map and store them as an array
+// This can take a very long time on huge databases, so be aware
 let index = 0
 while (secs.length > 0) {
     s[index] = {
@@ -367,12 +374,13 @@ for (let j = 0; j < 1000; j++) {
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
 }
 
+// Only get non-zero donations from the previous, very nicely optimised table
 let donations = playersE.filter(a => a.donations !== 0)
-    .map(a => ({ amount: a.donations, login: players.find(a => a.Id === a.playerID) }))
+    .map(a => ({ amount: a.donations, login: players.find(b => b.Id === a.playerID)?.Login }))
     .filter(a => a.login !== undefined)
 
-const date = new Date()
-
+console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'players_extra.donations' to ${process.env.POSTGRES_DATABASE}:'donations'`)
+// Donations table stuff
 for (let j = 0; j < 1000; j++) {
     const arr = []
     for (const [i, e] of donations.entries()) {
@@ -383,8 +391,8 @@ for (let j = 0; j < 1000; j++) {
         if (playerId === undefined) { continue }
         arr.push(
             playerId, // Player ID
-            e.amount,
-            date // All sectors array
+            e.amount, // Donation sum
+            new Date() // Donation date, not stored previously, hence it's the current date
         )
     }
     // Remove the already inserted entries
