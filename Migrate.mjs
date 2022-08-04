@@ -154,12 +154,21 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sector_records(
         REFERENCES map_ids(id)
   );`)
 
+await pool.query(`CREATE TABLE IF NOT EXISTS donations(
+    player_id INT4 GENERATED ALWAYS AS IDENTITY,
+    amount INT4 NOT NULL,
+    date TIMESTAMP NOT NULL
+    PRIMARY KEY(player_id, date)
+  );`)
+
 // Get all maps
 const maps = (await c.query('SELECT * FROM challenges'))[0]
 
 // Get all players, convert the nicknames in the process so they're displayed correctly.
 // Conversion query taken from https://stackoverflow.com/a/9407998
-let players = (await c.query('SELECT Id, Login, CONVERT(CAST(CONVERT(NickName USING LATIN1) AS BINARY) USING UTF8), Nation, Wins, TimePlayed, UpdatedAt FROM players'))[0]
+const players = (await c.query('SELECT Id, Login, CONVERT(CAST(CONVERT(NickName USING LATIN1) AS BINARY) USING UTF8), Nation, Wins, TimePlayed, UpdatedAt FROM players'))[0]
+
+let p = [...players]
 
 // Get players extra values, only visits are used from here for now
 const playersE = (await c.query('SELECT * FROM players_extra'))[0]
@@ -185,8 +194,8 @@ await pool.query(`INSERT INTO map_ids(uid) ${getInsertValuesString(1, maps.lengt
 ON CONFLICT (uid) DO NOTHING`, maps.map(a => a.Uid))
 
 // Insert all player IDs into the database
-await pool.query(`INSERT INTO player_ids(login) ${getInsertValuesString(1, players.length)} 
-ON CONFLICT (login) DO NOTHING`, players.map(a => a.Login.split('/')[0]))
+await pool.query(`INSERT INTO player_ids(login) ${getInsertValuesString(1, p.length)} 
+ON CONFLICT (login) DO NOTHING`, p.map(a => a.Login.split('/')[0]))
 
 // Get both player & map IDs
 const playerIds = await getPlayerIds()
@@ -197,7 +206,7 @@ console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'players' to ${proces
 // Players table stuff
 for (let j = 0; j < 1000; j++) {
     const arr = []
-    for (const [i, e] of players.entries()) {
+    for (const [i, e] of p.entries()) {
         if (i === 1000) {
             break
         }
@@ -213,7 +222,7 @@ for (let j = 0; j < 1000; j++) {
         )
     }
     // Remove the already inserted entries
-    players = players.slice(1000)
+    p = p.slice(1000)
     // Nothing left to insert..
     if (arr.length === 0) {
         break
@@ -356,6 +365,36 @@ for (let j = 0; j < 1000; j++) {
     }
     await pool.query(`INSERT INTO sector_records(map_id, player_id, sectors) ${getInsertValuesString(3, arr.length / 3)}
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
+}
+
+let donations = playersE.filter(a => a.donations !== 0)
+    .map(a => ({ amount: a.donations, login: players.find(a => a.Id === a.playerID) }))
+    .filter(a => a.login !== undefined)
+
+const date = new Date()
+
+for (let j = 0; j < 1000; j++) {
+    const arr = []
+    for (const [i, e] of donations.entries()) {
+        if (i === 1000) {
+            break
+        }
+        const playerId = playerIds.find(a => a.login === e.login?.split('/')[0])?.id
+        if (playerId === undefined) { continue }
+        arr.push(
+            playerId, // Player ID
+            e.amount,
+            date // All sectors array
+        )
+    }
+    // Remove the already inserted entries
+    donations = donations.slice(1000)
+    // Nothing left to insert..
+    if (arr.length === 0) {
+        break
+    }
+    await pool.query(`INSERT INTO donations(player_id, amount, date) ${getInsertValuesString(3, arr.length / 3)}
+    ON CONFLICT (player_id, date) DO NOTHING`, arr)
 }
 
 // Exit the process on completion
