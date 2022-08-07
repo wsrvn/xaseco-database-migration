@@ -68,18 +68,18 @@ await oraPromise(async () => {
 await oraPromise(async () => {
     // Create Players table
     await pool.query(`CREATE TABLE IF NOT EXISTS players(
-    id INT4 NOT NULL,
-    login VARCHAR(100) NOT NULL UNIQUE,
-    nickname VARCHAR(100) NOT NULL,
-    region VARCHAR(100) NOT NULL,
-    wins INT4 NOT NULL,
-    time_played INT4 NOT NULL,
-    visits INT4 NOT NULL,
-    is_united BOOLEAN NOT NULL,
-    last_online TIMESTAMP,
-    average REAL,
-    PRIMARY KEY(id)
-);`)
+        id INT4 GENERATED ALWAYS AS IDENTITY,
+        login VARCHAR(100) NOT NULL UNIQUE,
+        nickname VARCHAR(100) NOT NULL,
+        region VARCHAR(100) NOT NULL,
+        wins INT4 NOT NULL,
+        time_played INT4 NOT NULL,
+        visits INT4 NOT NULL,
+        is_united BOOLEAN NOT NULL,
+        average REAL NOT NULL,
+        last_online TIMESTAMP,
+        PRIMARY KEY(id)
+    );`)
 
     // Create Map IDs table
     await pool.query(`CREATE TABLE IF NOT EXISTS map_ids(
