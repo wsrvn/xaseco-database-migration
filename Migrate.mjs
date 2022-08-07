@@ -45,7 +45,7 @@ function getInsertValuesString(columns, rows = 1) {
  * @returns The database response
  */
 async function getPlayerIds() {
-    const query = `SELECT id, login FROM player_ids;`
+    const query = `SELECT id, login FROM players;`
     const res = await pool.query(query)
     return res.rows
 }
@@ -66,16 +66,10 @@ await oraPromise(async () => {
 }, { spinner: 'dots', text: `Connecting to the MySQL database ${process.env.MYSQL_DATABASE}@${process.env.MYSQL_HOST}` })
 
 await oraPromise(async () => {
-    // Create Player IDs table
-    await pool.query(`CREATE TABLE IF NOT EXISTS player_ids(
-    id INT4 GENERATED ALWAYS AS IDENTITY,
-    login VARCHAR(100) NOT NULL UNIQUE,
-    PRIMARY KEY(id)
-);`)
-
     // Create Players table
     await pool.query(`CREATE TABLE IF NOT EXISTS players(
     id INT4 NOT NULL,
+    login VARCHAR(100) NOT NULL UNIQUE,
     nickname VARCHAR(100) NOT NULL,
     region VARCHAR(100) NOT NULL,
     wins INT4 NOT NULL,
@@ -84,10 +78,7 @@ await oraPromise(async () => {
     is_united BOOLEAN NOT NULL,
     last_online TIMESTAMP,
     average REAL,
-    PRIMARY KEY(id),
-    CONSTRAINT fk_player_id
-      FOREIGN KEY(id) 
-	      REFERENCES player_ids(id)
+    PRIMARY KEY(id)
 );`)
 
     // Create Map IDs table
@@ -107,7 +98,7 @@ await oraPromise(async () => {
     PRIMARY KEY(map_id, player_id),
     CONSTRAINT fk_player_id
       FOREIGN KEY(player_id) 
-          REFERENCES player_ids(id),
+          REFERENCES players(id),
     CONSTRAINT fk_map_id
       FOREIGN KEY(map_id)
         REFERENCES map_ids(id)
@@ -122,7 +113,7 @@ await oraPromise(async () => {
     PRIMARY KEY(map_id, player_id),
     CONSTRAINT fk_player_id
       FOREIGN KEY(player_id) 
-        REFERENCES player_ids(id),
+        REFERENCES players(id),
     CONSTRAINT fk_map_id
       FOREIGN KEY(map_id)
         REFERENCES map_ids(id)
@@ -138,7 +129,7 @@ await oraPromise(async () => {
     PRIMARY KEY(map_id, index),
     CONSTRAINT fk_player_id
       FOREIGN KEY(player_id) 
-        REFERENCES player_ids(id),
+        REFERENCES players(id),
     CONSTRAINT fk_map_id
       FOREIGN KEY(map_id)
         REFERENCES map_ids(id)
@@ -152,7 +143,7 @@ await oraPromise(async () => {
     PRIMARY KEY(map_id, player_id),
     CONSTRAINT fk_player_id
       FOREIGN KEY(player_id) 
-        REFERENCES player_ids(id),
+        REFERENCES players(id),
     CONSTRAINT fk_map_id
       FOREIGN KEY(map_id)
         REFERENCES map_ids(id)
@@ -166,7 +157,7 @@ await oraPromise(async () => {
     PRIMARY KEY(player_id, date),
     CONSTRAINT fk_player_id
       FOREIGN KEY(player_id)
-        REFERENCES player_ids(id)
+        REFERENCES players(id)
   );`)
 }, { spinner: 'dots', text: `Creating necessary tables in ${process.env.POSTGRES_DATABASE}@${process.env.POSTGRES_HOST}` })
 
@@ -204,12 +195,7 @@ let secs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM sec
 await pool.query(`INSERT INTO map_ids(uid) ${getInsertValuesString(1, maps.length)} 
 ON CONFLICT (uid) DO NOTHING`, maps.map(a => a.Uid))
 
-// Insert all player IDs into the database
-await pool.query(`INSERT INTO player_ids(login) ${getInsertValuesString(1, p.length)} 
-ON CONFLICT (login) DO NOTHING`, p.map(a => a.Login.split('/')[0]))
-
 // Get both player & map IDs
-const playerIds = await getPlayerIds()
 const mapIds = await getMapIds()
 
 // Queries need to be separated to not hit the PostgreSQL limit
@@ -222,7 +208,7 @@ await oraPromise(async () => {
                 break
             }
             arr.push(
-                playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
+                e.Login.split('/')[0],
                 e['CONVERT(CAST(CONVERT(NickName USING LATIN1) AS BINARY) USING UTF8)'], // Player nickname, very funny
                 countries.find(a => a.code === e.Nation).name, // Country name, we store full location normally, but it's impossible to get from XASECO
                 e.Wins, // Player wins amount
@@ -239,10 +225,12 @@ await oraPromise(async () => {
             break
         }
         // Insert players
-        await pool.query(`INSERT INTO players(id, nickname, region, wins, time_played, visits, is_united, last_online) ${getInsertValuesString(8, arr.length / 8)}
-    ON CONFLICT (id) DO NOTHING`, arr)
+        await pool.query(`INSERT INTO players(login, nickname, region, wins, time_played, visits, is_united, last_online) ${getInsertValuesString(8, arr.length / 8)}
+            ON CONFLICT (login) DO NOTHING`, arr)
     }
 }, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:players to ${process.env.POSTGRES_DATABASE}:players` })
+
+const playerIds = await getPlayerIds()
 
 await oraPromise(async () => {
     // Records table stuff
