@@ -215,7 +215,8 @@ await oraPromise(async () => {
                 e.TimePlayed, // Player total playtime
                 playersE.find(a => e.Id === a.playerID).visits, // Player total visits
                 false, // Whether the player has TMUF. Defaults to false, as this isn't stored by XASECO
-                new Date(e.UpdatedAt) // Player last update
+                new Date(e.UpdatedAt), // Player last update
+                -1
             )
         }
         // Remove the already inserted entries
@@ -225,7 +226,7 @@ await oraPromise(async () => {
             break
         }
         // Insert players
-        await pool.query(`INSERT INTO players(login, nickname, region, wins, time_played, visits, is_united, last_online) ${getInsertValuesString(8, arr.length / 8)}
+        await pool.query(`INSERT INTO players(login, nickname, region, wins, time_played, visits, is_united, last_online, average) ${getInsertValuesString(8, arr.length / 8)}
             ON CONFLICT (login) DO NOTHING`, arr)
     }
 }, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:players to ${process.env.POSTGRES_DATABASE}:players` })
