@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise'
 import postgres from 'pg'
+import { oraPromise } from 'ora'
 import countries from './Countries.json' assert { type: 'json' }
 import 'dotenv/config'
 
@@ -9,7 +10,7 @@ const c = await mysql.createConnection({
     user: process.env.MYSQL_USER, // MySQL database user
     password: process.env.MYSQL_PASSWORD, // MySQL database user password
     database: process.env.MYSQL_DATABASE // MySQL database name
-});
+})
 
 // PostgreSQL database
 const pool = new postgres.Pool({
@@ -59,18 +60,21 @@ async function getMapIds() {
     return res.rows
 }
 
-// Connect to the MySQL database
-await c.connect()
+await oraPromise(async () => {
+    // Connect to the MySQL database
+    await c.connect()
+}, { spinner: 'dots', text: `Connecting to the MySQL database ${process.env.MYSQL_DATABASE}@${process.env.MYSQL_HOST}` })
 
-// Create Player IDs table
-await pool.query(`CREATE TABLE IF NOT EXISTS player_ids(
+await oraPromise(async () => {
+    // Create Player IDs table
+    await pool.query(`CREATE TABLE IF NOT EXISTS player_ids(
     id INT4 GENERATED ALWAYS AS IDENTITY,
     login VARCHAR(100) NOT NULL UNIQUE,
     PRIMARY KEY(id)
 );`)
 
-// Create Players table
-await pool.query(`CREATE TABLE IF NOT EXISTS players(
+    // Create Players table
+    await pool.query(`CREATE TABLE IF NOT EXISTS players(
     id INT4 NOT NULL,
     nickname VARCHAR(100) NOT NULL,
     region VARCHAR(100) NOT NULL,
@@ -86,15 +90,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS players(
 	      REFERENCES player_ids(id)
 );`)
 
-// Create Map IDs table
-await pool.query(`CREATE TABLE IF NOT EXISTS map_ids(
+    // Create Map IDs table
+    await pool.query(`CREATE TABLE IF NOT EXISTS map_ids(
     id INT4 GENERATED ALWAYS AS IDENTITY,
     uid VARCHAR(27) NOT NULL UNIQUE,
     PRIMARY KEY(id)
 );`)
 
-// Create Records table
-await pool.query(`CREATE TABLE IF NOT EXISTS records(
+    // Create Records table
+    await pool.query(`CREATE TABLE IF NOT EXISTS records(
     map_id INT4 NOT NULL,
     player_id INT4 NOT NULL,
     time INT4 NOT NULL,
@@ -109,8 +113,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS records(
         REFERENCES map_ids(id)
 );`)
 
-// Create Votes table
-await pool.query(`CREATE TABLE IF NOT EXISTS votes(
+    // Create Votes table
+    await pool.query(`CREATE TABLE IF NOT EXISTS votes(
     map_id INT4 NOT NULL,
     player_id INT4 NOT NULL,
     vote INT2 NOT NULL,
@@ -124,8 +128,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS votes(
         REFERENCES map_ids(id)
 );`)
 
-// Create Best Sectors table
-await pool.query(`CREATE TABLE IF NOT EXISTS best_sector_records(
+    // Create Best Sectors table
+    await pool.query(`CREATE TABLE IF NOT EXISTS best_sector_records(
     map_id INT4 NOT NULL,
     player_id INT4 NOT NULL,
     index INT2 NOT NULL,
@@ -140,8 +144,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS best_sector_records(
         REFERENCES map_ids(id)
   );`)
 
-// Create All Sectors table
-await pool.query(`CREATE TABLE IF NOT EXISTS sector_records(
+    // Create All Sectors table
+    await pool.query(`CREATE TABLE IF NOT EXISTS sector_records(
     map_id INT4 NOT NULL,
     player_id INT4 NOT NULL,
     sectors INT4[] NOT NULL,
@@ -154,8 +158,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sector_records(
         REFERENCES map_ids(id)
   );`)
 
-// Create Donations table
-await pool.query(`CREATE TABLE IF NOT EXISTS donations(
+    // Create Donations table
+    await pool.query(`CREATE TABLE IF NOT EXISTS donations(
     player_id INT4 NOT NULL,
     amount INT4 NOT NULL,
     date TIMESTAMP NOT NULL,
@@ -164,13 +168,14 @@ await pool.query(`CREATE TABLE IF NOT EXISTS donations(
       FOREIGN KEY(player_id)
         REFERENCES player_ids(id)
   );`)
+}, { spinner: 'dots', text: `Creating necessary tables in ${process.env.POSTGRES_DATABASE}@${process.env.POSTGRES_HOST}` })
 
 // Get all maps
 const maps = (await c.query('SELECT * FROM challenges'))[0]
 
 // Get all players, convert the nicknames in the process so they're displayed correctly.
 // Conversion query taken from https://stackoverflow.com/a/9407998
-// This can be made unfunny with AS NICKNAME but i want to be funny
+// This can be made unfunny with AS NICKNAME but I want it to be funny
 const players = (await c.query('SELECT Id, Login, CONVERT(CAST(CONVERT(NickName USING LATIN1) AS BINARY) USING UTF8), Nation, Wins, TimePlayed, UpdatedAt FROM players'))[0]
 
 // Break the reference
@@ -207,204 +212,213 @@ ON CONFLICT (login) DO NOTHING`, p.map(a => a.Login.split('/')[0]))
 const playerIds = await getPlayerIds()
 const mapIds = await getMapIds()
 
-console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'players' to ${process.env.POSTGRES_DATABASE}:'players'`)
 // Queries need to be separated to not hit the PostgreSQL limit
-// Players table stuff
-for (let j = 0; j < 1000; j++) {
-    const arr = []
-    for (const [i, e] of p.entries()) {
-        if (i === 1000) {
+await oraPromise(async () => {
+    // Players table stuff
+    for (let j = 0; j < 1000; j++) {
+        const arr = []
+        for (const [i, e] of p.entries()) {
+            if (i === 1000) {
+                break
+            }
+            arr.push(
+                playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
+                e['CONVERT(CAST(CONVERT(NickName USING LATIN1) AS BINARY) USING UTF8)'], // Player nickname, very funny
+                countries.find(a => a.code === e.Nation).name, // Country name, we store full location normally, but it's impossible to get from XASECO
+                e.Wins, // Player wins amount
+                e.TimePlayed, // Player total playtime
+                playersE.find(a => e.Id === a.playerID).visits, // Player total visits
+                false, // Whether the player has TMUF. Defaults to false, as this isn't stored by XASECO
+                new Date(e.UpdatedAt) // Player last update
+            )
+        }
+        // Remove the already inserted entries
+        p = p.slice(1000)
+        // Nothing left to insert..
+        if (arr.length === 0) {
             break
         }
-        arr.push(
-            playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
-            e['CONVERT(CAST(CONVERT(NickName USING LATIN1) AS BINARY) USING UTF8)'], // Player nickname, very funny
-            countries.find(a => a.code === e.Nation).name, // Country name, we store full location normally, but it's impossible to get from XASECO
-            e.Wins, // Player wins amount
-            e.TimePlayed, // Player total playtime
-            playersE.find(a => e.Id === a.playerID).visits, // Player total visits
-            false, // Whether the player has TMUF. Defaults to false, as this isn't stored by XASECO
-            new Date(e.UpdatedAt) // Player last update
-        )
-    }
-    // Remove the already inserted entries
-    p = p.slice(1000)
-    // Nothing left to insert..
-    if (arr.length === 0) {
-        break
-    }
-    // Insert players
-    await pool.query(`INSERT INTO players(id, nickname, region, wins, time_played, visits, is_united, last_online) ${getInsertValuesString(8, arr.length / 8)}
+        // Insert players
+        await pool.query(`INSERT INTO players(id, nickname, region, wins, time_played, visits, is_united, last_online) ${getInsertValuesString(8, arr.length / 8)}
     ON CONFLICT (id) DO NOTHING`, arr)
-}
+    }
+}, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:players to ${process.env.POSTGRES_DATABASE}:players` })
 
-console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'records' to ${process.env.POSTGRES_DATABASE}:'records'`)
-// Records table stuff
-for (let j = 0; j < 1000; j++) {
-    const arr = []
-    for (const [i, e] of records.entries()) {
-        if (i === 1000) {
+await oraPromise(async () => {
+    // Records table stuff
+    for (let j = 0; j < 1000; j++) {
+        const arr = []
+        for (const [i, e] of records.entries()) {
+            if (i === 1000) {
+                break
+            }
+            const cps = e.Checkpoints.split(',').map(a => Number(a))
+            cps.pop() // XASECO stores finish as checkpoint and trakman doesnt
+            arr.push(
+                mapIds.find(a => a.uid === e.Uid).id, // Map ID
+                playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
+                e.Score, // Record time
+                cps, // Player checkpoints, need to be reformatted as we store them in arrays
+                new Date(e.Date) // Record date
+            )
+        }
+        // Remove the already inserted entries
+        records = records.slice(1000)
+        // Nothing left to insert..
+        if (arr.length === 0) {
             break
         }
-        const cps = e.Checkpoints.split(',').map(a => Number(a))
-        cps.pop() // XASECO stores finish as checkpoint and trakman doesnt
-        arr.push(
-            mapIds.find(a => a.uid === e.Uid).id, // Map ID
-            playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
-            e.Score, // Record time
-            cps, // Player checkpoints, need to be reformatted as we store them in arrays
-            new Date(e.Date) // Record date
-        )
-    }
-    // Remove the already inserted entries
-    records = records.slice(1000)
-    // Nothing left to insert..
-    if (arr.length === 0) {
-        break
-    }
-    // Insert records
-    await pool.query(`INSERT INTO records(map_id, player_id, time, checkpoints, date) ${getInsertValuesString(5, arr.length / 5)}
+        // Insert records
+        await pool.query(`INSERT INTO records(map_id, player_id, time, checkpoints, date) ${getInsertValuesString(5, arr.length / 5)}
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
-}
+    }
+}, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:records to ${process.env.POSTGRES_DATABASE}:records` })
 
-console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'rs_karma' to ${process.env.POSTGRES_DATABASE}:'votes'`)
-// Votes table stuff
-for (let j = 0; j < 1000; j++) {
-    const arr = []
-    for (const [i, e] of votes.entries()) {
-        if (i === 1000) {
+await oraPromise(async () => {
+    // Votes table stuff
+    for (let j = 0; j < 1000; j++) {
+        const arr = []
+        for (const [i, e] of votes.entries()) {
+            if (i === 1000) {
+                break
+            }
+            arr.push(
+                mapIds.find(a => a.uid === e.Uid).id, // Map ID
+                playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
+                Math.abs(e.Score) === 6 ? e.Score / 2 : e.Score, // Player vote
+                new Date() // Vote date, no such thing in XASECO, so new date is inserted instead
+            )
+        }
+        // Remove the already inserted entries
+        votes = votes.slice(1000)
+        // Nothing left to insert..
+        if (arr.length === 0) {
             break
         }
-        arr.push(
-            mapIds.find(a => a.uid === e.Uid).id, // Map ID
-            playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
-            Math.abs(e.Score) === 6 ? e.Score / 2 : e.Score, // Player vote
-            new Date() // Vote date, no such thing in XASECO, so new date is inserted instead
-        )
-    }
-    // Remove the already inserted entries
-    votes = votes.slice(1000)
-    // Nothing left to insert..
-    if (arr.length === 0) {
-        break
-    }
-    await pool.query(`INSERT INTO votes(map_id, player_id, vote, date) ${getInsertValuesString(4, arr.length / 4)}
+        await pool.query(`INSERT INTO votes(map_id, player_id, vote, date) ${getInsertValuesString(4, arr.length / 4)}
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
-}
+    }
+}, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:rs_karma to ${process.env.POSTGRES_DATABASE}:votes` })
 
-console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'secrecs_all' to ${process.env.POSTGRES_DATABASE}:'best_sector_records'`)
-// Best Sectors table stuff
-for (let j = 0; j < 1000; j++) {
-    const arr = []
-    for (const [i, e] of bestSecs.entries()) {
-        if (i === 1000) {
+await oraPromise(async () => {
+    // Best Sectors table stuff
+    for (let j = 0; j < 1000; j++) {
+        const arr = []
+        for (const [i, e] of bestSecs.entries()) {
+            if (i === 1000) {
+                break
+            }
+            const mapId = mapIds.find(a => a.uid === e.ChallengeID)?.id
+            const playerId = playerIds.find(a => a.login === e.PlayerNick?.split('/')[0])?.id
+            if (mapId === undefined || playerId === undefined) { continue }
+            arr.push(
+                mapId, // Map ID
+                playerId, // Player ID
+                e.Sector, // Sector index
+                e.Time, // Sector time
+                new Date() // Sector date, no such thing in XASECO, so new date is inserted instead
+            )
+        }
+        // Remove the already inserted entries
+        bestSecs = bestSecs.slice(1000)
+        // Nothing left to insert..
+        if (arr.length === 0) {
             break
         }
-        const mapId = mapIds.find(a => a.uid === e.ChallengeID)?.id
-        const playerId = playerIds.find(a => a.login === e.PlayerNick?.split('/')[0])?.id
-        if (mapId === undefined || playerId === undefined) { continue }
-        arr.push(
-            mapId, // Map ID
-            playerId, // Player ID
-            e.Sector, // Sector index
-            e.Time, // Sector time
-            new Date() // Sector date, no such thing in XASECO, so new date is inserted instead
-        )
-    }
-    // Remove the already inserted entries
-    bestSecs = bestSecs.slice(1000)
-    // Nothing left to insert..
-    if (arr.length === 0) {
-        break
-    }
-    await pool.query(`INSERT INTO best_sector_records(map_id, player_id, index, sector, date) ${getInsertValuesString(5, arr.length / 5)}
+        await pool.query(`INSERT INTO best_sector_records(map_id, player_id, index, sector, date) ${getInsertValuesString(5, arr.length / 5)}
     ON CONFLICT (map_id, index) DO NOTHING`, arr)
-}
+    }
+}, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:secrecs_all to ${process.env.POSTGRES_DATABASE}:best_sector_records` })
 
-console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'secrecs_own' to ${process.env.POSTGRES_DATABASE}:'sector_records'`)
 // Initialise the array
 let s = []
-// Get each player's sectors for each map and store them as an array
-// This can take a very long time on huge databases, so be aware
-let index = 0
-while (secs.length > 0) {
-    s[index] = {
-        uid: secs[0].ChallengeID,
-        login: secs[0].PlayerNick,
-        sectors: []
-    }
-    s[index].sectors[secs[0].Sector] = secs[0].Time
-    let i = 1
-    while (true) {
-        if (secs[i] === undefined) { break }
-        if (secs[i].ChallengeID === secs[0].ChallengeID && secs[i].PlayerNick === secs[0].PlayerNick) {
-            s[index].sectors[secs[i].Sector] = secs[i].Time
-            secs.splice(i, 1)
-            i--
-        }
-        i++
-    }
-    secs.splice(0, 1)
-    index++
-}
 
-// Player Sectors table stuff
-for (let j = 0; j < 1000; j++) {
-    const arr = []
-    for (const [i, e] of s.entries()) {
-        if (i === 1000) {
+await oraPromise(async () => {
+    // Get each player's sectors for each map and store them as an array
+    // This can take a very long time on huge databases, so be aware
+    let index = 0
+    while (secs.length > 0) {
+        s[index] = {
+            uid: secs[0].ChallengeID,
+            login: secs[0].PlayerNick,
+            sectors: []
+        }
+        s[index].sectors[secs[0].Sector] = secs[0].Time
+        let i = 1
+        while (true) {
+            if (secs[i] === undefined) { break }
+            if (secs[i].ChallengeID === secs[0].ChallengeID && secs[i].PlayerNick === secs[0].PlayerNick) {
+                s[index].sectors[secs[i].Sector] = secs[i].Time
+                secs.splice(i, 1)
+                i--
+            }
+            i++
+        }
+        secs.splice(0, 1)
+        index++
+    }
+}, { spinner: 'dots', text: `Building sector indexes from ${process.env.MYSQL_DATABASE}:secrecs_own` })
+
+await oraPromise(async () => {
+    // Player Sectors table stuff
+    for (let j = 0; j < 1000; j++) {
+        const arr = []
+        for (const [i, e] of s.entries()) {
+            if (i === 1000) {
+                break
+            }
+            const mapId = mapIds.find(a => a.uid === e.uid)?.id
+            const playerId = playerIds.find(a => a.login === e.login?.split('/')[0])?.id
+            if (mapId === undefined || playerId === undefined) { continue }
+            arr.push(
+                mapId, // Map ID
+                playerId, // Player ID
+                e.sectors // All sectors array
+            )
+        }
+        // Remove the already inserted entries
+        s = s.slice(1000)
+        // Nothing left to insert..
+        if (arr.length === 0) {
             break
         }
-        const mapId = mapIds.find(a => a.uid === e.uid)?.id
-        const playerId = playerIds.find(a => a.login === e.login?.split('/')[0])?.id
-        if (mapId === undefined || playerId === undefined) { continue }
-        arr.push(
-            mapId, // Map ID
-            playerId, // Player ID
-            e.sectors // All sectors array
-        )
-    }
-    // Remove the already inserted entries
-    s = s.slice(1000)
-    // Nothing left to insert..
-    if (arr.length === 0) {
-        break
-    }
-    await pool.query(`INSERT INTO sector_records(map_id, player_id, sectors) ${getInsertValuesString(3, arr.length / 3)}
+        await pool.query(`INSERT INTO sector_records(map_id, player_id, sectors) ${getInsertValuesString(3, arr.length / 3)}
     ON CONFLICT (map_id, player_id) DO NOTHING`, arr)
-}
+    }
+}, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:secrecs_own to ${process.env.POSTGRES_DATABASE}:sector_records` })
 
 // Only get non-zero donations from the previous, very nicely optimised table
 let donations = playersE.filter(a => a.donations !== 0)
     .map(a => ({ amount: a.donations, login: players.find(b => b.Id === a.playerID)?.Login }))
     .filter(a => a.login !== undefined)
 
-console.log(`Migrating table ${process.env.MYSQL_DATABASE}:'players_extra.donations' to ${process.env.POSTGRES_DATABASE}:'donations'`)
-// Donations table stuff
-for (let j = 0; j < 1000; j++) {
-    const arr = []
-    for (const [i, e] of donations.entries()) {
-        if (i === 1000) {
+await oraPromise(async () => {
+    // Donations table stuff
+    for (let j = 0; j < 1000; j++) {
+        const arr = []
+        for (const [i, e] of donations.entries()) {
+            if (i === 1000) {
+                break
+            }
+            const playerId = playerIds.find(a => a.login === e.login?.split('/')[0])?.id
+            if (playerId === undefined) { continue }
+            arr.push(
+                playerId, // Player ID
+                e.amount, // Donation sum
+                new Date() // Donation date, not stored previously, hence it's the current date
+            )
+        }
+        // Remove the already inserted entries
+        donations = donations.slice(1000)
+        // Nothing left to insert..
+        if (arr.length === 0) {
             break
         }
-        const playerId = playerIds.find(a => a.login === e.login?.split('/')[0])?.id
-        if (playerId === undefined) { continue }
-        arr.push(
-            playerId, // Player ID
-            e.amount, // Donation sum
-            new Date() // Donation date, not stored previously, hence it's the current date
-        )
-    }
-    // Remove the already inserted entries
-    donations = donations.slice(1000)
-    // Nothing left to insert..
-    if (arr.length === 0) {
-        break
-    }
-    await pool.query(`INSERT INTO donations(player_id, amount, date) ${getInsertValuesString(3, arr.length / 3)}
+        await pool.query(`INSERT INTO donations(player_id, amount, date) ${getInsertValuesString(3, arr.length / 3)}
     ON CONFLICT (player_id, date) DO NOTHING`, arr)
-}
+    }
+}, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:players_extra.donations to ${process.env.POSTGRES_DATABASE}:donations` })
 
 // Exit the process on completion
-console.log('Migration done. Check the database for errors.')
+await oraPromise(() => { }, { text: `Migration complete. Check the database for possible errors.` })
 process.exit(0)
