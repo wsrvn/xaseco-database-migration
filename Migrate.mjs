@@ -226,7 +226,7 @@ await oraPromise(async () => {
             break
         }
         // Insert players
-        await pool.query(`INSERT INTO players(login, nickname, region, wins, time_played, visits, is_united, last_online, average) ${getInsertValuesString(8, arr.length / 8)}
+        await pool.query(`INSERT INTO players(login, nickname, region, wins, time_played, visits, is_united, last_online, average) ${getInsertValuesString(9, arr.length / 9)}
             ON CONFLICT (login) DO NOTHING`, arr)
     }
 }, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:players to ${process.env.POSTGRES_DATABASE}:players` })
