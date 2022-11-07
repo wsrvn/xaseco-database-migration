@@ -267,6 +267,15 @@ if (process.env.MIGRATE_RECORDS === 'YES') {
     }, { spinner: 'dots', text: `Migrating table ${process.env.MYSQL_DATABASE}:records to ${process.env.POSTGRES_DATABASE}:records` })
 }
 
+const voteValues = {
+    '-3': 0,
+    '-2': 20,
+    '-1': 40,
+    '1': 60,
+    '2': 80,
+    '3': 100
+}
+
 if (process.env.MIGRATE_VOTES === 'YES') {
     await oraPromise(async () => {
         // Votes table stuff
@@ -279,7 +288,7 @@ if (process.env.MIGRATE_VOTES === 'YES') {
                 arr.push(
                     mapIds.find(a => a.uid === e.Uid).id, // Map ID
                     playerIds.find(a => a.login === e.Login.split('/')[0]).id, // Player ID
-                    Math.abs(e.Score) === 6 ? e.Score / 2 : e.Score, // Player vote
+                    voteValues[String(Math.abs(e.Score) === 6 ? e.Score / 2 : e.Score)], // Player vote
                     new Date() // Vote date, no such thing in XASECO, so new date is inserted instead
                 )
             }
