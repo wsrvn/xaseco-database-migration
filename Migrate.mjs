@@ -185,11 +185,16 @@ let votes = (await c.query(`SELECT Uid, Login, Score FROM rs_karma
 INNER JOIN challenges ON challenges.Id=rs_karma.ChallengeId
 INNER JOIN players ON players.Id=rs_karma.PlayerId `))[0]
 
-// Get all best sectors
-let bestSecs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM secrecs_all`))[0]
+let bestSecs
+if (process.env.MIGRATE_BEST_SECTORS === 'YES') {
+    // Get all best sectors
+    bestSecs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM secrecs_all`))[0]
+}
 
-// Get all player sectors
-let secs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM secrecs_own`))[0]
+let secs
+if (process.env.MIGRATE_ALL_SECTORS === 'YES')
+    // Get all player sectors
+    secs = (await c.query(`SELECT ChallengeID, Sector, PlayerNick, Time FROM secrecs_own`))[0]
 
 // Insert all map IDs into the database
 await pool.query(`INSERT INTO map_ids(uid) ${getInsertValuesString(1, maps.length)} 
